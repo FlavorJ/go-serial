@@ -184,6 +184,8 @@ type Port struct {
 	c             *C.struct_sp_port_config
 	readDeadline  time.Time
 	writeDeadline time.Time
+	readTimeout   time.Duration
+	writeTimeout  time.Duration
 }
 
 // Implementation of net.Addr
@@ -277,8 +279,6 @@ func (p *Port) free() {
 func durationToTime(deadline time.Time) time.Duration {
 	return deadline.Sub(time.Now())
 }
-
-
 
 // Print libserialport debug messages to stderr.
 func SetDebug(enable bool) {
@@ -974,7 +974,7 @@ func flow2c(fc int) (cfc C.enum_sp_flowcontrol, err error) {
 	return
 }
 
-func sp_blocking_write(p *Port, b []byte, timeout time.Duration)(n int, err error) {
+func sp_blocking_write(p *Port, b []byte, timeout time.Duration) (n int, err error) {
 	size := len(b)
 
 	cbuf := unsafe.Pointer(&b[0])
@@ -995,7 +995,7 @@ func sp_blocking_write(p *Port, b []byte, timeout time.Duration)(n int, err erro
 	return n, nil
 }
 
-func sp_nonblocking_write(p *Port, b []byte)(n int, err error) {
+func sp_nonblocking_write(p *Port, b []byte) (n int, err error) {
 	buf := unsafe.Pointer(&b[0])
 	size := C.size_t(len(b))
 	c := C.sp_nonblocking_write(p.p, buf, size)
@@ -1006,7 +1006,7 @@ func sp_nonblocking_write(p *Port, b []byte)(n int, err error) {
 	return n, nil
 }
 
-func sp_blocking_read(p *Port, b []byte, timeout time.Duration)(n int, err error) {
+func sp_blocking_read(p *Port, b []byte, timeout time.Duration) (n int, err error) {
 
 	size := len(b)
 
@@ -1028,7 +1028,7 @@ func sp_blocking_read(p *Port, b []byte, timeout time.Duration)(n int, err error
 	return n, nil
 }
 
-func sp_nonblocking_read(p *Port, b []byte)(n int, err error) {
+func sp_nonblocking_read(p *Port, b []byte) (n int, err error) {
 	buf := unsafe.Pointer(&b[0])
 	size := C.size_t(len(b))
 	c := C.sp_nonblocking_read(p.p, buf, size)
@@ -1049,22 +1049,40 @@ func (p *Port) Read(b []byte) (int, error) {
 		}()
 	}
 
-	if p.readDeadline.IsZero() {
-
-		// no deadline
-		return sp_blocking_read(p, b, 0)
-
-	} else if timeout := durationToTime(p.readDeadline); timeout <= 0 {
-
-		// call nonblocking write
-		return sp_nonblocking_read(p, b)
-
-	} else {
-
-		// call blocking write
-		return sp_blocking_read(p, b, timeout)
-
+	timeout := p.readTimeout
+	if !p.readDeadline.IsZero() {
+		timeout := durationToTime(p.readDeadline)
+		if timeout == 0 {
+			timeout = -1 // ensure nonblocking read if the deadline is now
+		}
 	}
+
+	if timeout < 0 {
+		//nonblocking read
+		return sp_nonblocking_read(p, b)
+	} else {
+		//blocking read
+		return sp_blocking_read(p, b, timeout)
+	}
+
+	/*
+		if p.readDeadline.IsZero() {
+
+			// no deadline, use timeout
+			return sp_blocking_read(p, b, 0)
+
+		} else if timeout := durationToTime(p.readDeadline); timeout <= 0 {
+
+			// call nonblocking write
+			return sp_nonblocking_read(p, b)
+
+		} else {
+
+			// call blocking write
+			return sp_blocking_read(p, b, timeout)
+
+		}
+	*/
 }
 
 // Implementation of io.Writer interface.
@@ -1077,22 +1095,22 @@ func (p *Port) Write(b []byte) (n int, err error) {
 		}()
 	}
 
-	if p.writeDeadline.IsZero() {
-
-		// no deadline
-		return sp_blocking_write(p, b, 0)
-
-	} else if timeout := durationToTime(p.writeDeadline); timeout <= 0 {
-
-		// call nonblocking write
-		return sp_nonblocking_write(p, b)
-
-	} else {
-
-		// call blocking write
-		return sp_blocking_write(p, b, timeout)
-
+	timeout := p.writeTimeout
+	if !p.writeDeadline.IsZero() {
+		timeout := durationToTime(p.writeDeadline)
+		if timeout == 0 {
+			timeout = -1 // ensure nonblocking write if the deadline is now.
+		}
 	}
+
+	if timeout < 0 {
+		//nonblocking write
+		return sp_nonblocking_write(p, b)
+	} else {
+		//blocking write
+		return sp_blocking_write(p, b, timeout)
+	}
+
 }
 
 // WriteString is like Write, but writes the contents of string s
@@ -1111,22 +1129,50 @@ func (p *Port) RemoteAddr() net.Addr {
 	return &Addr{name: p.Name()}
 }
 
+func (p *Port) SetTimeout(t time.Duration) (err error) {
+	if err = p.SetReadTimeout(t); err != nil {
+		return
+	}
+	if err = p.SetWriteTimeout(t); err != nil {
+		return
+	}
+	return nil
+}
+
+func (p *Port) SetReadTimeout(t time.Duration) error {
+	p.readTimeout = t
+	p.readDeadline = time.Time{}
+	return nil
+}
+
+func (p *Port) SetWriteTimeout(t time.Duration) error {
+	p.writeTimeout = t
+	p.writeDeadline = time.Time{}
+	return nil
+}
+
 // Implementation of net.Conn.SetDeadline
-func (p *Port) SetDeadline(t time.Time) error {
-	p.readDeadline = t
-	p.writeDeadline = t
+func (p *Port) SetDeadline(t time.Time) (err error) {
+	if err = p.SetReadDeadline(t); err != nil {
+		return
+	}
+	if err = p.SetWriteDeadline(t); err != nil {
+		return
+	}
 	return nil
 }
 
 // Implementation of net.Conn.SetReadDeadline
 func (p *Port) SetReadDeadline(t time.Time) error {
 	p.readDeadline = t
+	p.readTimeout = time.Duration(0)
 	return nil
 }
 
 // Implementation of net.Conn.SetWriteDeadline
 func (p *Port) SetWriteDeadline(t time.Time) error {
 	p.writeDeadline = t
+	p.writeTimeout = time.Duration(0)
 	return nil
 }
 

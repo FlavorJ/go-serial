@@ -34,6 +34,10 @@ Example Usage
 */
 package serial
 
+func init() {
+	runtime.LockOSThread()
+}
+
 /*
 #cgo CFLAGS: -g -O2 -DSP_PRIV= -DSP_API=
 #cgo darwin LDFLAGS: -framework IOKit -framework CoreFoundation

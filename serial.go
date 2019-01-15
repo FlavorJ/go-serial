@@ -34,9 +34,7 @@ Example Usage
 */
 package serial
 
-func init() {
-	runtime.LockOSThread()
-}
+
 
 /*
 #cgo CFLAGS: -g -O2 -DSP_PRIV= -DSP_API=
@@ -70,6 +68,10 @@ import (
 	"time"
 	"unsafe"
 )
+
+func init() {
+	runtime.LockOSThread()
+}
 
 // Debug flag
 const Debug = false

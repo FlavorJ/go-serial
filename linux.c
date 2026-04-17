@@ -1,3 +1,6 @@
+//go:build linux
+// +build linux
+
 /*
  * This file is part of the libserialport project.
  *

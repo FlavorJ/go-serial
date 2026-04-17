@@ -1,3 +1,6 @@
+//go:build windows
+// +build windows
+
 /*
  * This file is part of the libserialport project.
  *

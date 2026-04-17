@@ -1,7 +1,7 @@
 package main
 
 import (
-	".."
+	"FlavorJ/go-serial"
 	"log"
 	"time"
 )

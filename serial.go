@@ -1,5 +1,7 @@
-/*
+//go:build darwin || linux || windows
+// +build darwin linux windows
 
+/*
 Package serial provides a binding to libserialport for serial port
 functionality. Serial ports are commonly used with embedded systems,
 such as the Arduino platform.
@@ -30,16 +32,14 @@ Example Usage
 	    log.Println(buf)
 	  }
 	}
-
 */
 package serial
-
-
 
 /*
 #cgo CFLAGS: -g -O2 -DSP_PRIV= -DSP_API=
 #cgo darwin LDFLAGS: -framework IOKit -framework CoreFoundation
 #cgo windows LDFLAGS: -lsetupapi
+#cgo linux LDFLAGS: -lserialport
 
 #include <stdarg.h>
 #include <stdio.h>

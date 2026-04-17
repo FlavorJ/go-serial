@@ -1,3 +1,6 @@
+//go:build darwin
+// +build darwin
+
 /*
  * This file is part of the libserialport project.
  *

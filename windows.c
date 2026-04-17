@@ -1,3 +1,6 @@
+//go:build windows
+// +build windows
+
 /*
  * This file is part of the libserialport project.
  *
@@ -153,10 +156,10 @@ static char *get_string_descriptor(HANDLE hub_device, ULONG connection_index,
 	    || size < 2
 	    || desc->bDescriptorType != USB_STRING_DESCRIPTOR_TYPE
 	    || desc->bLength != size - sizeof(*desc_req)
-	    || desc->bLength % 2)
-		return NULL;
-
-	return wc_to_utf8(desc->bString, desc->bLength);
+	    || desc->bLength % 2) {
+			return NULL;
+		}
+	return wc_to_utf8(desc->bString, desc->bLength - 2);
 }
 
 static void enumerate_hub_ports(struct sp_port *port, HANDLE hub_device,
@@ -227,21 +230,23 @@ static void enumerate_hub_ports(struct sp_port *port, HANDLE hub_device,
 			port->usb_vid = connection_info_ex->DeviceDescriptor.idVendor;
 			port->usb_pid = connection_info_ex->DeviceDescriptor.idProduct;
 
-			if (connection_info_ex->DeviceDescriptor.iManufacturer)
+			if (connection_info_ex->DeviceDescriptor.iManufacturer) {
 				port->usb_manufacturer = get_string_descriptor(hub_device,index,
 				           connection_info_ex->DeviceDescriptor.iManufacturer);
-			if (connection_info_ex->DeviceDescriptor.iProduct)
+			}
+			if (connection_info_ex->DeviceDescriptor.iProduct) {
 				port->usb_product = get_string_descriptor(hub_device, index,
 				           connection_info_ex->DeviceDescriptor.iProduct);
+			}
 			if (connection_info_ex->DeviceDescriptor.iSerialNumber) {
 				port->usb_serial = get_string_descriptor(hub_device, index,
 				           connection_info_ex->DeviceDescriptor.iSerialNumber);
 				if (port->usb_serial == NULL) {
-				//composite device, get the parent's serial number
-				char device_id[MAX_DEVICE_ID_LEN];
-				if (CM_Get_Parent(&dev_inst, dev_inst, 0) == CR_SUCCESS) {
-					if (CM_Get_Device_IDA(dev_inst, device_id, sizeof(device_id), 0) == CR_SUCCESS)
-						port->usb_serial = strdup(strrchr(device_id, '\\')+1);
+					//composite device, get the parent's serial number
+					char device_id[MAX_DEVICE_ID_LEN];
+					if (CM_Get_Parent(&dev_inst, dev_inst, 0) == CR_SUCCESS) {
+						if (CM_Get_Device_IDA(dev_inst, device_id, sizeof(device_id), 0) == CR_SUCCESS)
+							port->usb_serial = strdup(strrchr(device_id, '\\')+1);
 					}
 				}
 			}
@@ -273,11 +278,12 @@ static void enumerate_hub(struct sp_port *port, char *hub_name,
 
 	/* get the number of ports of the hub */
 	if (DeviceIoControl(hub_device, IOCTL_USB_GET_NODE_INFORMATION,
-	                    &hub_info, size, &hub_info, size, &size, NULL))
+	                    &hub_info, size, &hub_info, size, &size, NULL)) {
 		/* enumerate the ports of the hub */
 		enumerate_hub_ports(port, hub_device,
 		   hub_info.u.HubInformation.HubDescriptor.bNumberOfPorts, parent_path, dev_inst);
 
+	}
 	CloseHandle(hub_device);
 }
 
@@ -456,8 +462,9 @@ SP_PRIV enum sp_return get_port_details(struct sp_port *port)
 
 				/* stop the recursion when reaching the USB root */
 				if (!strncmp(device_id, "USB\\ROOT", 8))
+				{
 					break;
-
+				}
 				/* prepend the address of current USB layer to the USB path */
 				DWORD address;
 				size = sizeof(address);

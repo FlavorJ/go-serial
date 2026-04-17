@@ -1,9 +1,10 @@
 package main
 
 import (
-	"FlavorJ/go-serial"
 	"log"
 	"time"
+
+	"github.com/FlavorJ/go-serial"
 )
 
 func main() {

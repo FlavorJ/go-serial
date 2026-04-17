@@ -149,17 +149,22 @@ static char *get_string_descriptor(HANDLE hub_device, ULONG connection_index,
 	                                | descriptor_index;
 	desc_req->SetupPacket.wIndex  = 0;
 	desc_req->SetupPacket.wLength = size - sizeof(*desc_req);
-
+printf("U0\n");
 	if (!DeviceIoControl(hub_device,
 	                     IOCTL_USB_GET_DESCRIPTOR_FROM_NODE_CONNECTION,
 	                     desc_req, size, desc_req, size, &size, NULL)
 	    || size < 2
 	    || desc->bDescriptorType != USB_STRING_DESCRIPTOR_TYPE
 	    || desc->bLength != size - sizeof(*desc_req)
-	    || desc->bLength % 2)
-		return NULL;
-
-	return wc_to_utf8(desc->bString, desc->bLength);
+	    || desc->bLength % 2) {
+printf("U1\n");		
+			return NULL;
+		}
+printf("U2\n");
+printf("Descriptor length: %d\n", desc->bLength);
+printf("Descriptor string: %.*S\n", desc->bLength, desc->bString);
+printf("U3\n");
+	return wc_to_utf8(desc->bString, desc->bLength - 2);
 }
 
 static void enumerate_hub_ports(struct sp_port *port, HANDLE hub_device,
@@ -167,7 +172,7 @@ static void enumerate_hub_ports(struct sp_port *port, HANDLE hub_device,
 {
 	char path[MAX_USB_PATH];
 	ULONG index = 0;
-
+DEBUG("T0");
 	for (index = 1; index <= nb_ports; index++) {
 		PUSB_NODE_CONNECTION_INFORMATION_EX connection_info_ex;
 		ULONG size = sizeof(*connection_info_ex) + 30*sizeof(USB_PIPE_INFO);
@@ -187,6 +192,7 @@ static void enumerate_hub_ports(struct sp_port *port, HANDLE hub_device,
 			size = sizeof(*connection_info) + 30*sizeof(USB_PIPE_INFO);
 			if (!(connection_info = malloc(size))) {
 				free(connection_info_ex);
+
 				continue;
 			}
 			connection_info->ConnectionIndex = index;
@@ -224,32 +230,41 @@ static void enumerate_hub_ports(struct sp_port *port, HANDLE hub_device,
 				free(connection_info_ex);
 				continue;
 			}
-
+printf("T1\n");
 			/* finally grab detailed informations regarding the device */
 			port->usb_address = connection_info_ex->DeviceAddress + 1;
 			port->usb_vid = connection_info_ex->DeviceDescriptor.idVendor;
 			port->usb_pid = connection_info_ex->DeviceDescriptor.idProduct;
 
-			if (connection_info_ex->DeviceDescriptor.iManufacturer)
+			if (connection_info_ex->DeviceDescriptor.iManufacturer) {
 				port->usb_manufacturer = get_string_descriptor(hub_device,index,
 				           connection_info_ex->DeviceDescriptor.iManufacturer);
-			if (connection_info_ex->DeviceDescriptor.iProduct)
+printf("T1.1\n");
+			}
+			if (connection_info_ex->DeviceDescriptor.iProduct) {
+printf("iProduct: %d\n", connection_info_ex->DeviceDescriptor.iProduct);
 				port->usb_product = get_string_descriptor(hub_device, index,
 				           connection_info_ex->DeviceDescriptor.iProduct);
+printf("T1.2\n");
+			}
 			if (connection_info_ex->DeviceDescriptor.iSerialNumber) {
 				port->usb_serial = get_string_descriptor(hub_device, index,
 				           connection_info_ex->DeviceDescriptor.iSerialNumber);
+printf("T1.3\n");
 				if (port->usb_serial == NULL) {
-				//composite device, get the parent's serial number
-				char device_id[MAX_DEVICE_ID_LEN];
-				if (CM_Get_Parent(&dev_inst, dev_inst, 0) == CR_SUCCESS) {
-					if (CM_Get_Device_IDA(dev_inst, device_id, sizeof(device_id), 0) == CR_SUCCESS)
-						port->usb_serial = strdup(strrchr(device_id, '\\')+1);
+printf("T2\n");
+					//composite device, get the parent's serial number
+					char device_id[MAX_DEVICE_ID_LEN];
+					if (CM_Get_Parent(&dev_inst, dev_inst, 0) == CR_SUCCESS) {
+						if (CM_Get_Device_IDA(dev_inst, device_id, sizeof(device_id), 0) == CR_SUCCESS)
+							port->usb_serial = strdup(strrchr(device_id, '\\')+1);
 					}
 				}
+printf("T3\n");
 			}
-
+printf("T4\n");
 			free(connection_info_ex);
+printf("T5\n");
 			break;
 		}
 	}
@@ -262,25 +277,28 @@ static void enumerate_hub(struct sp_port *port, char *hub_name,
 	HANDLE hub_device;
 	ULONG size = sizeof(hub_info);
 	char *device_name;
-
+DEBUG("S0");
 	/* open the hub with its full name */
 	if (!(device_name = malloc(strlen("\\\\.\\") + strlen(hub_name) + 1)))
 		return;
 	strcpy(device_name, "\\\\.\\");
 	strcat(device_name, hub_name);
+DEBUG("S1");
 	hub_device = CreateFile(device_name, GENERIC_WRITE, FILE_SHARE_WRITE,
 	                        NULL, OPEN_EXISTING, 0, NULL);
 	free(device_name);
+DEBUG("S2");
 	if (hub_device == INVALID_HANDLE_VALUE)
 		return;
 
 	/* get the number of ports of the hub */
 	if (DeviceIoControl(hub_device, IOCTL_USB_GET_NODE_INFORMATION,
-	                    &hub_info, size, &hub_info, size, &size, NULL))
+	                    &hub_info, size, &hub_info, size, &size, NULL)) {
 		/* enumerate the ports of the hub */
 		enumerate_hub_ports(port, hub_device,
 		   hub_info.u.HubInformation.HubDescriptor.bNumberOfPorts, parent_path, dev_inst);
 
+	}
 	CloseHandle(hub_device);
 }
 
@@ -289,16 +307,18 @@ static void enumerate_host_controller(struct sp_port *port,
                                       DEVINST dev_inst)
 {
 	char *root_hub_name;
-
+DEBUG("R0");
 	if (port->composite) {
 		//remove last part of the path
 		char * pch;
 		pch=strrchr(port->usb_path,'.');
 		port->usb_path[pch-port->usb_path] = '\0';
 	}
-
+DEBUG("R1");
 	if ((root_hub_name = get_root_hub_name(host_controller_device))) {
+DEBUG("R2");
 		enumerate_hub(port, root_hub_name, "", dev_inst);
+DEBUG("R3");
 		free(root_hub_name);
 	}
 }
@@ -308,11 +328,11 @@ static void get_usb_details(struct sp_port *port, DEVINST dev_inst_match)
 	HDEVINFO device_info;
 	SP_DEVINFO_DATA device_info_data;
 	ULONG i, size = 0;
-
+DEBUG("P0");
 	device_info = SetupDiGetClassDevs(&GUID_CLASS_USB_HOST_CONTROLLER,NULL,NULL,
 	                                  DIGCF_PRESENT | DIGCF_DEVICEINTERFACE);
 	device_info_data.cbSize = sizeof(device_info_data);
-
+DEBUG("P1");
 	for (i=0; SetupDiEnumDeviceInfo(device_info, i, &device_info_data); i++) {
 		SP_DEVICE_INTERFACE_DATA device_interface_data;
 		PSP_DEVICE_INTERFACE_DETAIL_DATA device_detail_data;
@@ -324,7 +344,8 @@ static void get_usb_details(struct sp_port *port, DEVINST dev_inst_match)
 		                                 &GUID_CLASS_USB_HOST_CONTROLLER,
 		                                 i, &device_interface_data))
 			continue;
-
+DEBUG("P2");
+		 /* get the device path of the host controller */
 		if (!SetupDiGetDeviceInterfaceDetail(device_info,&device_interface_data,
 		                                     NULL, 0, &size, NULL)
 		    && GetLastError() != ERROR_INSUFFICIENT_BUFFER)
@@ -339,7 +360,8 @@ static void get_usb_details(struct sp_port *port, DEVINST dev_inst_match)
 			free(device_detail_data);
 			continue;
 		}
-
+DEBUG("P3");
+		 /* enumerate the USB devices attached to this host controller */
 		while (CM_Get_Parent(&dev_inst, dev_inst, 0) == CR_SUCCESS
 		       && dev_inst != device_info_data.DevInst) { }
 
@@ -349,17 +371,21 @@ static void get_usb_details(struct sp_port *port, DEVINST dev_inst_match)
 		}
 
 		port->usb_bus = i + 1;
-
+DEBUG("P4");
 		host_controller_device = CreateFile(device_detail_data->DevicePath,
 		                                    GENERIC_WRITE, FILE_SHARE_WRITE,
 		                                    NULL, OPEN_EXISTING, 0, NULL);
+DEBUG("P5");								
 		if (host_controller_device != INVALID_HANDLE_VALUE) {
+DEBUG("P5.1");
 			enumerate_host_controller(port, host_controller_device, dev_inst_match);
+DEBUG("P5.2");
 			CloseHandle(host_controller_device);
 		}
+DEBUG("P6");
 		free(device_detail_data);
 	}
-
+DEBUG("P7");
 	SetupDiDestroyDeviceInfoList(device_info);
 	return;
 }
@@ -403,7 +429,7 @@ SP_PRIV enum sp_return get_port_details(struct sp_port *port)
 		value[sizeof(value)-1] = 0;
 		if (strcmp(value, port->name))
 			continue;
-
+DEBUG("K");
 		/* check port transport type */
 		dev_inst = device_info_data.DevInst;
 		size = sizeof(class);
@@ -415,7 +441,7 @@ SP_PRIV enum sp_return get_port_details(struct sp_port *port)
 			if (!strcmp(class, "USB"))
 				port->transport = SP_TRANSPORT_USB;
 		}
-
+DEBUG("L");
 		/* get port description (friendly name) */
 		dev_inst = device_info_data.DevInst;
 		size = sizeof(description);
@@ -424,7 +450,7 @@ SP_PRIV enum sp_return get_port_details(struct sp_port *port)
 		       && CM_Get_Parent(&dev_inst, dev_inst, 0) == CR_SUCCESS) { }
 		if (cr == CR_SUCCESS)
 			port->description = strdup(description);
-
+DEBUG("M");
 		/* get more informations for USB connected ports */
 		if (port->transport == SP_TRANSPORT_USB) {
 			char usb_path[MAX_USB_PATH] = "", tmp[MAX_USB_PATH];
@@ -438,12 +464,12 @@ SP_PRIV enum sp_return get_port_details(struct sp_port *port)
 				                      sizeof(device_id), 0) != CR_SUCCESS
 				    || strncmp(device_id, "USB\\", 4))
 					continue;
-
+DEBUG("M2");
 				/* discard one layer for composite devices */
 				char compat_ids[512];
 				char *p = compat_ids;
 				size = sizeof(compat_ids);
-
+DEBUG("N");
 				if (CM_Get_DevNode_Registry_PropertyA(dev_inst,
 				                                      CM_DRP_COMPATIBLEIDS, 0,
 				                                      &compat_ids,
@@ -456,30 +482,39 @@ SP_PRIV enum sp_return get_port_details(struct sp_port *port)
 						p += strlen(p) + 1;
 					}
 				}
-
+DEBUG("N2");
 				/* stop the recursion when reaching the USB root */
-				if (!strncmp(device_id, "USB\\ROOT", 8))
-					break;
 
+DEBUG_FMT("Device ID len: %d", strnlen(device_id, MAX_DEVICE_ID_LEN));
+DEBUG_FMT("Device ID len: %s", device_id);
+				if (!strncmp(device_id, "USB\\ROOT", 8))
+				{
+					DEBUG("N3.1");
+					break;
+				}
+DEBUG("N3");
 				/* prepend the address of current USB layer to the USB path */
 				DWORD address;
 				size = sizeof(address);
 				if (CM_Get_DevNode_Registry_PropertyA(dev_inst, CM_DRP_ADDRESS,
 				                        0, &address, &size, 0) == CR_SUCCESS) {
+				DEBUG("N3.2");
 					strcpy(tmp, usb_path);
 					snprintf(usb_path, sizeof(usb_path), "%d%s%s",
 					         (int)address, *tmp ? "." : "", tmp);
 				}
+DEBUG("N4");
 			} while (CM_Get_Parent(&dev_inst, dev_inst, 0) == CR_SUCCESS);
-
+DEBUG("N5");
 			port->usb_path = strdup(usb_path);
-
+DEBUG("N6");
 			/* retrieve USB device details from the device descriptor */
 			get_usb_details(port, device_info_data.DevInst);
+DEBUG("N7");
 		}
 		break;
 	}
-
+DEBUG("O");
 	SetupDiDestroyDeviceInfoList(device_info);
 
 	RETURN_OK();

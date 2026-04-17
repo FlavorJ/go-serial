@@ -83,23 +83,23 @@ SP_API enum sp_return sp_get_port_by_name(const char *portname, struct sp_port *
 
 	if (!(port = malloc(sizeof(struct sp_port))))
 		RETURN_ERROR(SP_ERR_MEM, "Port structure malloc failed");
-
+	DEBUG("A");
 	len = strlen(portname) + 1;
-
+	DEBUG("B");
 	if (!(port->name = malloc(len))) {
 		free(port);
 		RETURN_ERROR(SP_ERR_MEM, "Port name malloc failed");
 	}
-
+	DEBUG("C");
 	memcpy(port->name, portname, len);
-
+	DEBUG("D");
 #ifdef _WIN32
 	port->usb_path = NULL;
 	port->hdl = INVALID_HANDLE_VALUE;
 #else
 	port->fd = -1;
 #endif
-
+	DEBUG("E");
 	port->description = NULL;
 	port->transport = SP_TRANSPORT_NATIVE;
 	port->usb_bus = -1;
@@ -110,14 +110,16 @@ SP_API enum sp_return sp_get_port_by_name(const char *portname, struct sp_port *
 	port->usb_product = NULL;
 	port->usb_serial = NULL;
 	port->bluetooth_address = NULL;
-
+	DEBUG("F");
 #ifndef NO_PORT_METADATA
+DEBUG("G");
 	if ((ret = get_port_details(port)) != SP_OK) {
+		DEBUG("H");
 		sp_free_port(port);
 		return ret;
 	}
 #endif
-
+	DEBUG("I");
 	*port_ptr = port;
 
 	RETURN_OK();

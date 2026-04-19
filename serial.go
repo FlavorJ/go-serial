@@ -1065,9 +1065,11 @@ func (p *Port) Read(b []byte) (int, error) {
 
 	if timeout < 0 {
 		//nonblocking read
+		log.Printf("nonblocking read\n")
 		return sp_nonblocking_read(p, b)
 	} else {
 		//blocking read
+		log.Printf("blocking read with timeout %d ms\n", timeout/time.Millisecond)
 		return sp_blocking_read(p, b, timeout)
 	}
 
